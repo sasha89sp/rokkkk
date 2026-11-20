@@ -1,0 +1,6 @@
+{
+  "name": "Huawei E173 Manager — Flutter Portable",
+  "description": "Портативная утилита управления 3G-модемом Huawei E173 для Windows на Flutter с веб-терминалом Web Serial API и готовым архивом исходного кода.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
