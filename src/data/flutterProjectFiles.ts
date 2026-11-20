@@ -7,6 +7,116 @@ export interface FlutterProjectFile {
 
 export const FLUTTER_PROJECT_FILES: FlutterProjectFile[] = [
   {
+    path: '.github/workflows/build-windows-portable.yml',
+    language: 'yaml',
+    summary: 'GitHub Actions: автоматическая сборка портативного Windows .exe и ZIP-архива в облаке',
+    content: `name: Build Portable Windows (Huawei E173)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Сборка Flutter Windows x64 Portable
+    runs-on: windows-latest
+
+    steps:
+      - name: Получение исходного кода
+        uses: actions/checkout@v4
+
+      - name: Установка Flutter SDK (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Инициализация Windows Runner (если папка windows не в репозитории)
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          if (-not (Test-Path "windows/CMakeLists.txt")) {
+            flutter create --platforms=windows --project-name huawei_e173_manager .
+          }
+
+      - name: Загрузка зависимостей и проверка кода
+        shell: pwsh
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Компиляция Release-версии для Windows x64
+        shell: pwsh
+        run: flutter build windows --release
+
+      - name: Формирование портативной сборки и ZIP-архива
+        shell: pwsh
+        run: |
+          $releaseDir = "build/windows/x64/runner/Release"
+          if (-not (Test-Path $releaseDir)) {
+            $releaseDir = "build/windows/runner/Release"
+          }
+
+          $distDir = "dist/HuaweiE173_Portable"
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+          Copy-Item -Path "$releaseDir/*" -Destination $distDir -Recurse -Force
+
+          # Копируем системные VC++ DLL, чтобы .exe запускался на любой чистой Windows 10/11
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            $sysDll = Join-Path $env:WINDIR "System32/$dll"
+            if (Test-Path $sysDll) {
+              Copy-Item -Path $sysDll -Destination $distDir -Force
+            }
+          }
+
+          # Флаг портативного режима (настройки сохраняются рядом с .exe)
+          Set-Content -Path "$distDir/portable.flag" -Value "portable=true" -Encoding UTF8
+
+          Compress-Archive -Path "$distDir/*" -DestinationPath "dist/HuaweiE173_Portable_Win64.zip" -Force
+          Get-ChildItem "dist/HuaweiE173_Portable_Win64.zip"
+
+      - name: Публикация артефакта сборки (ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HuaweiE173_Portable_Win64
+          path: dist/HuaweiE173_Portable_Win64.zip
+          retention-days: 30
+
+      - name: Создание GitHub Release (при пуше тега v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/HuaweiE173_Portable_Win64.zip
+          generate_release_notes: true
+`,
+  },
+  {
+    path: '.gitignore',
+    language: 'markdown',
+    summary: 'Исключения Git для Flutter Windows (build, .dart_tool, dist)',
+    content: `# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+dist/
+
+# Windows IDE / локальные настройки
+windows/flutter/ephemeral/
+.vs/
+*.user
+settings.json
+`,
+  },
+  {
     path: 'pubspec.yaml',
     language: 'yaml',
     summary: 'Зависимости Flutter для Windows (Win32 COM-порт, Provider, управление окном)',
@@ -38,7 +148,7 @@ flutter:
   {
     path: 'build_portable.bat',
     language: 'batch',
-    summary: 'Скрипт сборки портативной версии в папку dist\\HuaweiE173_Portable и ZIP-архив',
+    summary: 'Локальный скрипт сборки портативной версии в папку dist\\HuaweiE173_Portable',
     content: `@echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
@@ -51,14 +161,14 @@ echo.
 where flutter >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo [ОШИБКА] Flutter SDK не найден в PATH.
-    echo Установите Flutter для Windows: https://docs.flutter.dev/get-started/install/windows
+    echo Установите Flutter для Windows или соберите проект через GitHub Actions.
     pause
     exit /b 1
 )
 
 if not exist "windows\\CMakeLists.txt" (
     echo [1/4] Инициализация стандартного Windows Runner...
-    call flutter create --platforms=windows .
+    call flutter create --platforms=windows --project-name huawei_e173_manager .
 )
 
 echo [2/4] Загрузка зависимостей Dart...
@@ -90,8 +200,6 @@ powershell -NoProfile -Command "Compress-Archive -Path '%DIST_DIR%\\*' -Destinat
 echo.
 echo Готово! Портативная папка: %DIST_DIR%
 echo Архив для флешки: dist\\HuaweiE173_Portable_Win64.zip
-echo Примечание: на чистой Windows без Visual C++ Redistributable скопируйте
-echo vcruntime140.dll, vcruntime140_1.dll и msvcp140.dll в папку %DIST_DIR%.
 echo.
 pause
 `,
@@ -99,39 +207,41 @@ pause
   {
     path: 'README.md',
     language: 'markdown',
-    summary: 'Инструкция по сборке, драйверам Huawei E173 и запуску с флешки',
+    summary: 'Инструкция по облачной сборке на GitHub Actions, локальной сборке и драйверам E173',
     content: `# Huawei E173 Manager (Portable Windows · Flutter)
 
 Портативная настольная программа для Windows 10/11 (x64) на Flutter для работы с 3G USB-модемом **Huawei E173** через COM-порт (\`HUAWEI Mobile Connect - 3G PC UI Interface\`).
 
-## Возможности
-- **Автопоиск COM-порта Huawei** через Win32 API (\`serial_port_win32\`, без внешних драйверов C++).
-- **Мониторинг сигнала и сети**: RSSI (dBm / ASU), стандарт сети (HSDPA / WCDMA / EDGE), оператор, IMEI, IMSI, версия прошивки.
-- **SMS с полной поддержкой кириллицы (UCS2)**: чтение входящих, отправка, удаление, локальный архив рядом с \`.exe\`.
-- **USSD-запросы**: автоматическая упаковка GSM 7-bit и декодирование кириллических ответов UCS2 (\`+CUSD\`).
-- **Инженерные настройки E173**:
-  - Переключение режима сети (\`AT^SYSCFG\`: Авто / Только 3G / Приоритет 3G / Только 2G).
-  - Режим USB-композиции (\`AT^U2DIAG\`: 0 — только модем, 255 / 256 / 257).
-  - Голосовые функции (\`AT^CVOICE=0/1\`), проверка блокировки (\`AT^CARDLOCK?\`), перезагрузка (\`AT+CFUN=1,1\`).
-- **AT-терминал**: ручной ввод любых AT-команд с журналом TX/RX.
-- **100% портативность**: конфигурация \`settings.json\` и кэш SMS сохраняются в той же папке, где лежит \`huawei_e173_manager.exe\`.
+## Способ 1: Автоматическая компиляция на GitHub Actions (без установки Flutter)
 
-## Требования для сборки
-1. Windows 10/11 x64
-2. Flutter SDK 3.22+ (\`flutter config --enable-windows-desktop\`)
-3. Visual Studio 2022 с компонентом **«Разработка классических приложений на C++»**
+Вам не нужно устанавливать Flutter SDK и Visual Studio на компьютер — GitHub сам соберёт готовый портативный \`.exe\` со всеми нужными DLL:
 
-## Быстрая сборка портативной версии
-Запустите \`build_portable.bat\` двойным кликом (или в PowerShell):
-\`\`\`bat
-build_portable.bat
-\`\`\`
-Скрипт соберёт релиз и создаст готовую переносимую папку \`dist\\HuaweiE173_Portable\\\` и архив \`dist\\HuaweiE173_Portable_Win64.zip\`.
+1. Создайте новый репозиторий на GitHub (публичный или приватный).
+2. Загрузите в него содержимое распакованного архива:
+   \`\`\`bash
+   git init
+   git add .
+   git commit -m "Initial Huawei E173 portable app"
+   git branch -M main
+   git remote add origin https://github.com/<ВАШ_ЛОГИН>/<РЕПОЗИТОРИЙ>.git
+   git push -u origin main
+   \`\`\`
+3. Откройте вкладку **Actions** в репозитории GitHub — запустится workflow **Build Portable Windows (Huawei E173)** на сервере \`windows-latest\`.
+4. Через 3–5 минут внизу страницы завершённого запуска скачайте готовый артефакт **HuaweiE173_Portable_Win64.zip**.
+5. *(Опционально)* Чтобы автоматически выпустить **GitHub Release**, отправьте тег:
+   \`\`\`bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   \`\`\`
+
+Архив уже включает \`vcruntime140.dll\`, \`vcruntime140_1.dll\`, \`msvcp140.dll\` и \`portable.flag\` — достаточно распаковать папку на флешку и запустить \`huawei_e173_manager.exe\`.
+
+## Способ 2: Локальная сборка на Windows
+1. Установите Flutter SDK 3.22+ и Visual Studio 2022 («Разработка классических приложений на C++»).
+2. Запустите \`build_portable.bat\`.
 
 ## Какой COM-порт выбирать для Huawei E173?
-В «Диспетчере устройств» Windows модем Huawei E173 обычно создаёт два порта:
-- \`HUAWEI Mobile Connect - 3G Modem\` — используется для RAS/PPP-дозвона.
-- \`HUAWEI Mobile Connect - 3G PC UI Interface\` — **выбирайте этот порт** для опроса сигнала, SMS, USSD и AT-команд (работает даже во время активного интернет-соединения).
+В «Диспетчере устройств» Windows выберите **\`HUAWEI Mobile Connect - 3G PC UI Interface\`** — он позволяет читать сигнал, SMS и USSD даже при активном интернет-соединении.
 `,
   },
   {
@@ -664,15 +774,13 @@ class HuaweiModemService extends ChangeNotifier {
   Future<void> connect(String portName, {int baudRate = 115200}) async {
     disconnect();
     try {
-      final port = SerialPort(
-        portName,
-        openNow: false,
+      final port = SerialPort(portName, openNow: false);
+      port.openWithSettings(
         BaudRate: baudRate,
         ByteSize: 8,
         StopBits: 0,
         Parity: 0,
       );
-      port.open();
       if (!port.isOpened) {
         throw Exception('Не удалось открыть \$portName. Закройте программы-конкуренты.');
       }

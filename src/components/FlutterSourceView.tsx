@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
-import { Check, Copy, Download, FileCode2, FolderTree } from 'lucide-react';
+import { Check, Copy, Download, FileCode2, FolderTree, GitBranch } from 'lucide-react';
 import { FLUTTER_PROJECT_FILES } from '../data/flutterProjectFiles';
 
 interface FlutterSourceViewProps {
   onDownloadZip: () => Promise<void>;
 }
+
+const GIT_PUSH_SNIPPET = `git init
+git add .
+git commit -m "Huawei E173 portable Windows app"
+git branch -M main
+git remote add origin https://github.com/YOUR_USER/huawei-e173-portable.git
+git push -u origin main`;
 
 export const FlutterSourceView: React.FC<FlutterSourceViewProps> = ({
   onDownloadZip,
@@ -12,17 +19,25 @@ export const FlutterSourceView: React.FC<FlutterSourceViewProps> = ({
   const [selectedPath, setSelectedPath] = useState<string>(
     FLUTTER_PROJECT_FILES[0].path
   );
-  const [copied, setCopied] = useState(false);
+  const [buildMode, setBuildMode] = useState<'github' | 'local'>('github');
+  const [copiedFile, setCopiedFile] = useState(false);
+  const [copiedGit, setCopiedGit] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   const activeFile =
     FLUTTER_PROJECT_FILES.find((f) => f.path === selectedPath) ||
     FLUTTER_PROJECT_FILES[0];
 
-  const handleCopy = async () => {
+  const handleCopyFile = async () => {
     await navigator.clipboard.writeText(activeFile.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    setCopiedFile(true);
+    setTimeout(() => setCopiedFile(false), 1800);
+  };
+
+  const handleCopyGit = async () => {
+    await navigator.clipboard.writeText(GIT_PUSH_SNIPPET);
+    setCopiedGit(true);
+    setTimeout(() => setCopiedGit(false), 1800);
   };
 
   const handleDownload = async () => {
@@ -36,21 +51,22 @@ export const FlutterSourceView: React.FC<FlutterSourceViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Верхний блок с описанием и кнопкой скачивания ZIP */}
+      {/* Верхний блок: облачная компиляция на GitHub Actions и локальная сборка */}
       <section className="bg-white border border-slate-200 rounded-lg p-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-slate-900">
-              Портативный Flutter-проект для Windows (Huawei E173)
+              Сборка портативного Windows .exe на GitHub Actions
             </h2>
             <p className="text-sm text-slate-600 max-w-3xl">
-              Готовый исходный код настольного приложения на Dart/Flutter с библиотекой{' '}
+              В архив уже добавлен workflow{' '}
               <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-800">
-                serial_port_win32
+                .github/workflows/build-windows-portable.yml
               </code>
-              , портативным хранением <code className="font-mono text-xs">settings.json</code>{' '}
-              рядом с <code className="font-mono text-xs">.exe</code> и скриптом сборки{' '}
-              <code className="font-mono text-xs">build_portable.bat</code>.
+              . GitHub сам скомпилирует Flutter под Windows x64 на сервере{' '}
+              <code className="font-mono text-xs">windows-latest</code>, добавит системные{' '}
+              <code className="font-mono text-xs">vcruntime140.dll</code> /{' '}
+              <code className="font-mono text-xs">msvcp140.dll</code> и выдаст готовый портативный ZIP.
             </p>
           </div>
 
@@ -69,36 +85,131 @@ export const FlutterSourceView: React.FC<FlutterSourceViewProps> = ({
           </button>
         </div>
 
-        {/* 3 конкретных шага сборки на Windows */}
-        <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div>
-            <div className="font-semibold text-slate-900">
-              01. Распаковка архива на Windows
-            </div>
-            <p className="text-slate-600 mt-1 leading-relaxed">
-              Распакуйте <span className="font-mono">huawei_e173_flutter_windows_portable.zip</span>{' '}
-              в папку без кириллицы, например <span className="font-mono">C:\dev\huawei_e173_manager</span>.
-            </p>
+        {/* Переключатель способа сборки */}
+        <div className="mt-5 pt-4 border-t border-slate-100">
+          <div className="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-md mb-4">
+            <button
+              type="button"
+              onClick={() => setBuildMode('github')}
+              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
+                buildMode === 'github'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Компиляция на GitHub Actions
+            </button>
+            <button
+              type="button"
+              onClick={() => setBuildMode('local')}
+              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
+                buildMode === 'local'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Локальная сборка на Windows
+            </button>
           </div>
-          <div>
-            <div className="font-semibold text-slate-900">
-              02. Сборка одной командой
+
+          {buildMode === 'github' ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <div className="font-semibold text-slate-900">
+                    01. Загрузите архив в репозиторий GitHub
+                  </div>
+                  <p className="text-slate-600 mt-1 leading-relaxed">
+                    Скачайте ZIP, распакуйте папку <span className="font-mono">huawei_e173_manager</span>{' '}
+                    и отправьте её в новый репозиторий на GitHub (публичный или приватный).
+                    Устанавливать Flutter локально не требуется.
+                  </p>
+                </div>
+                <div>
+                  <div className="font-semibold text-slate-900">
+                    02. Автосборка на windows-latest
+                  </div>
+                  <p className="text-slate-600 mt-1 leading-relaxed">
+                    Во вкладке <span className="font-semibold text-slate-800">Actions</span>{' '}
+                    автоматически запустится workflow{' '}
+                    <span className="font-mono">Build Portable Windows</span> (или запустите его
+                    вручную кнопкой <span className="font-mono">Run workflow</span>).
+                  </p>
+                </div>
+                <div>
+                  <div className="font-semibold text-slate-900">
+                    03. Скачайте готовый .exe (Artifacts / Releases)
+                  </div>
+                  <p className="text-slate-600 mt-1 leading-relaxed">
+                    Через 3–5 минут скачайте артефакт{' '}
+                    <span className="font-mono">HuaweiE173_Portable_Win64.zip</span>. При пуше
+                    тега <span className="font-mono">v1.0.0</span> архив автоматически
+                    опубликуется в разделе <span className="font-semibold text-slate-800">Releases</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-md overflow-hidden">
+                <div className="px-3.5 py-2 border-b border-slate-800 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-slate-300 font-mono">
+                    <GitBranch className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Команды отправки проекта в GitHub</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyGit()}
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white cursor-pointer"
+                  >
+                    {copiedGit ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Скопировано</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Копировать</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="p-3.5 text-xs font-mono text-slate-100 overflow-x-auto m-0 leading-relaxed">
+                  <code>{GIT_PUSH_SNIPPET}</code>
+                </pre>
+              </div>
             </div>
-            <p className="text-slate-600 mt-1 leading-relaxed">
-              Запустите <span className="font-mono">build_portable.bat</span> — скрипт выполнит{' '}
-              <span className="font-mono">flutter pub get</span>, соберёт Release x64 и упакует
-              портативную папку.
-            </p>
-          </div>
-          <div>
-            <div className="font-semibold text-slate-900">
-              03. Запуск с флешки без установки
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div>
+                <div className="font-semibold text-slate-900">
+                  01. Распаковка архива на Windows
+                </div>
+                <p className="text-slate-600 mt-1 leading-relaxed">
+                  Распакуйте <span className="font-mono">huawei_e173_flutter_windows_portable.zip</span>{' '}
+                  в папку без кириллицы, например <span className="font-mono">C:\dev\huawei_e173_manager</span>.
+                </p>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900">
+                  02. Локальная сборка через bat-скрипт
+                </div>
+                <p className="text-slate-600 mt-1 leading-relaxed">
+                  Запустите <span className="font-mono">build_portable.bat</span> — скрипт выполнит{' '}
+                  <span className="font-mono">flutter pub get</span>, соберёт Release x64 и упакует
+                  портативную папку.
+                </p>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900">
+                  03. Запуск с флешки без установки
+                </div>
+                <p className="text-slate-600 mt-1 leading-relaxed">
+                  Скопируйте каталог <span className="font-mono">dist\HuaweiE173_Portable</span> на
+                  USB-флешку. Настройки сохраняются рядом с <span className="font-mono">.exe</span>.
+                </p>
+              </div>
             </div>
-            <p className="text-slate-600 mt-1 leading-relaxed">
-              Скопируйте каталог <span className="font-mono">dist\HuaweiE173_Portable</span> на
-              USB-флешку. Настройки сохраняются рядом с <span className="font-mono">.exe</span>.
-            </p>
-          </div>
+          )}
         </div>
       </section>
 
@@ -161,10 +272,10 @@ export const FlutterSourceView: React.FC<FlutterSourceViewProps> = ({
 
             <button
               type="button"
-              onClick={() => void handleCopy()}
+              onClick={() => void handleCopyFile()}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              {copied ? (
+              {copiedFile ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Скопировано</span>

@@ -425,7 +425,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Портативный Flutter-проект для Windows
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Готовый исходный код (Win32 COM-порт + build_portable.bat)
+                Готовый код с GitHub Actions (сборка .exe в облаке) и Win32 COM-портом
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
